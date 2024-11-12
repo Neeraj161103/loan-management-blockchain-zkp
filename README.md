@@ -1,6 +1,6 @@
 # loan-management-blockchain-zkp
 
-This is a demo application to implement a complaint system using react js and solidity.
+This is a demo application to implement a zkp based loan management system using react js and solidity.
 
 
 ## Installation
