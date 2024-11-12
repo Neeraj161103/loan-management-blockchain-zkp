@@ -1,97 +1,55 @@
-const { time, loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { expect } = require("chai");
+const { ethers } = require("hardhat");
 
-describe("Lock", function () {
-  async function deployOneYearLockFixture() {
-    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-    const ONE_GWEI = 1_000_000_000;
+describe("LoanManagement Contract", function () {
+    let LoanManagement;
+    let loanManagement;
+    let owner;
+    let borrower;
 
-    const lockedAmount = ONE_GWEI;
-    const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
-
-    const [owner, otherAccount] = await ethers.getSigners();
-
-    const Lock = await ethers.getContractFactory("Lock");
-    const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-    return { lock, unlockTime, lockedAmount, owner, otherAccount };
-  }
-
-  describe("Deployment", function () {
-    it("Should set the right unlockTime", async function () {
-      const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
-
-      expect(await lock.unlockTime()).to.equal(unlockTime);
+    beforeEach(async function () {
+        [owner, borrower] = await ethers.getSigners();
+        LoanManagement = await ethers.getContractFactory("LoanManagement");
+        loanManagement = await LoanManagement.deploy();
     });
 
-    it("Should set the right owner", async function () {
-      const { lock, owner } = await loadFixture(deployOneYearLockFixture);
+    it("Should allow a user to request a loan", async function () {
+        const amount = ethers.utils.parseEther("10");
 
-      expect(await lock.owner()).to.equal(owner.address);
+        await expect(loanManagement.connect(borrower).requestLoan(amount))
+            .to.emit(loanManagement, "LoanRequested")
+            .withArgs(borrower.address, amount);
+
+        const loanDetails = await loanManagement.getLoan(borrower.address);
+        expect(loanDetails.amount).to.equal(amount);
+        expect(loanDetails.isRepaid).to.equal(false);
     });
 
-    it("Should receive and store the funds to lock", async function () {
-      const { lock, lockedAmount } = await loadFixture(deployOneYearLockFixture);
+    it("Should allow a user to repay a loan", async function () {
+        const amount = ethers.utils.parseEther("10");
+        await loanManagement.connect(borrower).requestLoan(amount);
 
-      expect(await ethers.provider.getBalance(lock.target)).to.equal(lockedAmount);
+        await expect(loanManagement.connect(borrower).repayLoan({ value: amount }))
+            .to.emit(loanManagement, "LoanRepaid")
+            .withArgs(borrower.address, amount);
+
+        const loanDetails = await loanManagement.getLoan(borrower.address);
+        expect(loanDetails.isRepaid).to.equal(true);
     });
 
-    it("Should fail if the unlockTime is not in the future", async function () {
-      const latestTime = await time.latest();
-      const Lock = await ethers.getContractFactory("Lock");
-      await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith("Unlock time should be in the future");
-    });
-  });
+    it("Should fail to request a loan if a loan is already active", async function () {
+        const amount = ethers.utils.parseEther("10");
+        await loanManagement.connect(borrower).requestLoan(amount);
 
-  describe("Withdrawals", function () {
-    describe("Validations", function () {
-      it("Should revert with the right error if called too soon", async function () {
-        const { lock } = await loadFixture(deployOneYearLockFixture);
-
-        await expect(lock.withdraw()).to.be.revertedWith("You can't withdraw yet");
-      });
-
-      it("Should revert with the right error if called from another account", async function () {
-        const { lock, unlockTime, otherAccount } = await loadFixture(deployOneYearLockFixture);
-
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith("You aren't the owner");
-      });
-
-      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-        const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
-
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.withdraw()).not.to.be.reverted;
-      });
+        await expect(loanManagement.connect(borrower).requestLoan(amount))
+            .to.be.revertedWith("Existing loan must be repaid first");
     });
 
-    describe("Events", function () {
-      it("Should emit an event on withdrawals", async function () {
-        const { lock, unlockTime, lockedAmount } = await loadFixture(deployOneYearLockFixture);
+    it("Should fail if the repayment amount is incorrect", async function () {
+        const amount = ethers.utils.parseEther("10");
+        await loanManagement.connect(borrower).requestLoan(amount);
 
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.withdraw())
-          .to.emit(lock, "Withdrawal")
-          .withArgs(lockedAmount, anyValue);
-      });
+        await expect(loanManagement.connect(borrower).repayLoan({ value: ethers.utils.parseEther("5") }))
+            .to.be.revertedWith("Incorrect repayment amount");
     });
-
-    describe("Transfers", function () {
-      it("Should transfer the funds to the owner", async function () {
-        const { lock, unlockTime, lockedAmount, owner } = await loadFixture(deployOneYearLockFixture);
-
-        await time.increaseTo(unlockTime);
-
-        const txResponse = await lock.withdraw(); // Await the transaction response
-        const txReceipt = await txResponse.wait(); // Wait for the transaction to be mined
-
-        await expect(txReceipt).to.changeEtherBalances([owner, lock], [lockedAmount, -lockedAmount]);
-      });
-    });
-  });
 });

@@ -1,19 +1,25 @@
+const hre = require("hardhat");
+
 async function main() {
-    // Get the contract factory
-    const Loan = await ethers.getContractFactory("Loan");
+    const [deployer] = await hre.ethers.getSigners();
 
-    // Deploy the contract
-    const loan = await Loan.deploy();
+    console.log("Deploying contracts with the account:", deployer.address);
 
-    // Wait until the contract is deployed
-    await loan.deployed();
+    // Compile contract and deploy
+    const LoanManagement = await hre.ethers.getContractFactory("LoanManagement");
+    const loanManagement = await LoanManagement.deploy();
 
-    console.log("Loan contract deployed to:", loan.address);
+    console.log("LoanManagement contract deployed to:", loanManagement.address);
+
+    // Save contract address to .env for frontend interaction
+    const fs = require("fs");
+    fs.appendFileSync(".env", `CONTRACT_ADDRESS=${loanManagement.address}\n`);
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+// Run the deployment script
+main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });
