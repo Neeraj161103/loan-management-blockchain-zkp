@@ -28,4 +28,8 @@ npm start
 .env file shall look like this
 API_URL = "https://volta-rpc.energyweb.org"
 PRIVATE_KEY = "{Your prive key here}"
+<<<<<<< HEAD
 CONTRACT_ADDRESS = " {Your contract address here}"
+=======
+CONTRACT_ADDRESS = " {Your contract address here}"
+>>>>>>> a22c7b55d71d764bc1e41334d890043c60763ac4
